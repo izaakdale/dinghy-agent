@@ -6,7 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/izaakdale/dinghy-agent/cluster"
+	"github.com/izaakdale/dinghy-agent/discovery"
 	"github.com/kelseyhightower/envconfig"
 )
 
@@ -33,7 +33,7 @@ func New() *App {
 }
 
 func (a *App) Run() {
-	node, evCh, err := cluster.Setup(
+	node, evCh, err := discovery.NewMembership(
 		spec.BindAddr,
 		spec.BindPort, // BIND defines where the agent listen for incomming connection
 		spec.AdvertiseAddr,
@@ -58,7 +58,7 @@ func (a *App) Run() {
 			}
 			os.Exit(1)
 		case e := <-evCh:
-			cluster.HandleSerfEvent(e, node)
+			discovery.HandleSerfEvent(e, node)
 		}
 	}
 }
