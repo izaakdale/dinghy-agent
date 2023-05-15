@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dinghy-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dinghy-agent
+  template:
+    metadata:
+      labels:
+        app: dinghy-agent
+    spec:
+      containers:
+        - name: main-app
+          image: dinghy-agent
+          imagePullPolicy: Never
+          env:
+            - name: BIND_ADDR
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: BIND_PORT
+              value: "7777"
+            - name: ADVERTISE_ADDR
+              value: dinghy-agent-svc.default.svc.cluster.local
+            - name: ADVERTISE_PORT
+              value: "7777"
+            - name: CLUSTER_ADDR
+              value: dinghy-agent-svc.default.svc.cluster.local
+            - name: CLUSTER_PORT
+              value: "7777"
+            - name: NAME
+              value: dinghy-agent
+          resources:
+            limits:
+              memory: "128Mi"
+              cpu: "500m"
+          ports:
+          - name: serf
+            containerPort: 7777

@@ -33,7 +33,7 @@ func New() *App {
 }
 
 func (a *App) Run() {
-	cluster, evCh, err := cluster.Setup(
+	node, evCh, err := cluster.Setup(
 		spec.BindAddr,
 		spec.BindPort, // BIND defines where the agent listen for incomming connection
 		spec.AdvertiseAddr,
@@ -42,7 +42,7 @@ func (a *App) Run() {
 		spec.ClusterPort, // CLUSTER is the address of a first agent
 		spec.Name,
 	) // NAME must be unique in a cluster
-	defer cluster.Leave()
+	defer node.Leave()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -52,9 +52,13 @@ func (a *App) Run() {
 	for {
 		select {
 		case <-shCh:
+			err := node.Leave()
+			if err != nil {
+				log.Fatalf("error leaving cluster %v", err)
+			}
 			os.Exit(1)
-		case <-evCh:
-			log.Println("event channel triggered")
+		case e := <-evCh:
+			cluster.HandleSerfEvent(e, node)
 		}
 	}
 }

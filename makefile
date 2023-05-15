@@ -1,11 +1,18 @@
 
-run:
-	GPRC_ADDR=127.0.0.1 \
-	GRPC_PORT=5001 \
-	REDIS_ADDR=localhost:6379 \
+run: 
 	BIND_ADDR=127.0.0.1 \
-	BIND_PORT=8301 \
- 	ADVERTISE_ADDR=127.0.0.1 \
-	ADVERTISE_PORT=8301 \
+	BIND_PORT=7777 \
+	ADVERTISE_ADDR=127.0.0.1 \
+	ADVERTISE_PORT=7777 \
+	CLUSTER_ADDR=127.0.0.1 \
+	CLUSTER_PORT=7777 \
 	NAME=agent \
 	go run .
+
+docker:
+	docker build -t dinghy-agent .
+
+up:
+	kubectl apply -k deploy/
+dn:
+	kubectl delete -k deploy/
