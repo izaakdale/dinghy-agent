@@ -1,7 +1,7 @@
 package app
 
 import (
-	"net"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,57 +13,48 @@ import (
 var spec Specification
 
 type Specification struct {
-	GRPCAddr   net.IP `envconfig:"GRPC_ADDR"`
-	GRCPPort   int    `envconfig:"GRPC_PORT"`
-	clusterCfg cluster.Specification
+	BindAddr      string `envconfig:"BIND_ADDR"`
+	BindPort      string `envconfig:"BIND_PORT"`
+	AdvertiseAddr string `envconfig:"ADVERTISE_ADDR"`
+	AdvertisePort string `envconfig:"ADVERTISE_PORT"`
+	ClusterAddr   string `envconfig:"CLUSTER_ADDR"`
+	ClusterPort   string `envconfig:"CLUSTER_PORT"`
+	Name          string `envconfig:"NAME"`
 }
 
 type App struct {
 }
 
 func New() *App {
-	err := envconfig.Process("", &spec)
-	if err != nil {
-		panic(err)
-	}
-	err = envconfig.Process("", &spec.clusterCfg)
-	if err != nil {
+	if err := envconfig.Process("", &spec); err != nil {
 		panic(err)
 	}
 	return &App{}
 }
 
-func (a *App) Run() error {
-	node, evCh, err := cluster.SetupNode(
-		spec.clusterCfg.BindAddr,      // BIND defines where the agent listens for incoming connections
-		spec.clusterCfg.BindPort,      // in k8s this would be the ip and port of the pod/container
-		spec.clusterCfg.AdvertiseAddr, // ADVERTISE defines where the agent is reachable
-		spec.clusterCfg.AdvertisePort, // in k8s this correlates to the cluster ip service
-		spec.clusterCfg.Name,          // NAME must be unique, which is not possible for replicas with env vars. Uniqueness handled in setup
-		spec.GRCPPort,
-	)
+func (a *App) Run() {
+	cluster, evCh, err := cluster.Setup(
+		spec.BindAddr,
+		spec.BindPort, // BIND defines where the agent listen for incomming connection
+		spec.AdvertiseAddr,
+		spec.AdvertisePort, // ADVERTISE defines where the agent is reachable, often it the same as BIND
+		spec.ClusterAddr,
+		spec.ClusterPort, // CLUSTER is the address of a first agent
+		spec.Name,
+	) // NAME must be unique in a cluster
+	defer cluster.Leave()
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
-	defer node.Leave()
 
-	// signal channel for the os/k8s
 	shCh := make(chan os.Signal, 2)
 	signal.Notify(shCh, os.Interrupt, syscall.SIGTERM)
-
-Loop:
 	for {
 		select {
-		// shutdown
 		case <-shCh:
-			break Loop
-		// serf event channel
-		case ev := <-evCh:
-			cluster.HandleSerfEvent(ev, node)
-			// grpc error
-			// case err := <-errCh:
-			// 	return err
+			os.Exit(1)
+		case <-evCh:
+			log.Println("event channel triggered")
 		}
 	}
-	return nil
 }
