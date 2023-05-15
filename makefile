@@ -1,0 +1,11 @@
+
+run:
+	GPRC_ADDR=127.0.0.1 \
+	GRPC_PORT=5001 \
+	REDIS_ADDR=localhost:6379 \
+	BIND_ADDR=127.0.0.1 \
+	BIND_PORT=8301 \
+ 	ADVERTISE_ADDR=127.0.0.1 \
+	ADVERTISE_PORT=8301 \
+	NAME=agent \
+	go run .
