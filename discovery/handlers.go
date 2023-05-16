@@ -35,14 +35,25 @@ func HandleSerfEvent(e serf.Event, node *serf.Serf) {
 	}
 }
 
+type WorkerNode struct {
+	Name     string
+	GRPCAddr string
+	RaftAddr string
+}
+
 func handleJoin(m serf.Member) error {
 	log.Printf("member joined %s @ %s\n", m.Name, m.Addr)
 
-	tag, ok := m.Tags["test"]
-	if !ok {
-		log.Printf("no tags\n")
+	tag, _ := m.Tags["name"]
+	tag2, _ := m.Tags["grpc_addr"]
+	tag3, _ := m.Tags["raft_addr"]
+
+	w := WorkerNode{
+		Name:     tag,
+		GRPCAddr: tag2,
+		RaftAddr: tag3,
 	}
-	log.Printf("---- %+v ----\n", tag)
+	log.Printf("%+v\n", w)
 
 	return nil
 }
