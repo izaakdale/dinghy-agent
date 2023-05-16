@@ -1,18 +1,27 @@
 package app
 
 import (
+	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/izaakdale/dinghy-agent/discovery"
+	v1 "github.com/izaakdale/dinghy-agent/api/v1"
+	"github.com/izaakdale/dinghy-agent/internal/discovery"
+	"github.com/izaakdale/dinghy-agent/internal/server"
+	"github.com/izaakdale/dinghy-agent/internal/worker"
 	"github.com/kelseyhightower/envconfig"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 var spec Specification
 
 type Specification struct {
+	GRPCAddr      string `envconfig:"GRPC_ADDR"`
+	GRPCPort      int    `envconfig:"GRPC_PORT"`
 	BindAddr      string `envconfig:"BIND_ADDR"`
 	BindPort      string `envconfig:"BIND_PORT"`
 	AdvertiseAddr string `envconfig:"ADVERTISE_ADDR"`
@@ -33,6 +42,30 @@ func New() *App {
 }
 
 func (a *App) Run() {
+	log.Printf("hello, my name is %s\n", spec.Name)
+
+	gAddr := fmt.Sprintf("%s:%d", spec.GRPCAddr, spec.GRPCPort)
+	ln, err := net.Listen("tcp", gAddr)
+	if err != nil {
+		log.Fatalf("failed to start up grpc listener: %v", err)
+	}
+
+	balance := &worker.Balancer{
+		Leader:    nil,
+		Followers: []*worker.Client{},
+	}
+
+	gsrv := grpc.NewServer()
+	reflection.Register(gsrv)
+
+	srv := server.New(balance)
+	v1.RegisterAgentServer(gsrv, srv)
+
+	errCh := make(chan error)
+	go func(ch chan error) {
+		ch <- gsrv.Serve(ln)
+	}(errCh)
+
 	node, evCh, err := discovery.NewMembership(
 		spec.BindAddr,
 		spec.BindPort, // BIND defines where the agent listen for incomming connection
@@ -58,7 +91,9 @@ func (a *App) Run() {
 			}
 			os.Exit(1)
 		case e := <-evCh:
-			discovery.HandleSerfEvent(e, node)
+			discovery.HandleSerfEvent(e, node, balance)
+		case err := <-errCh:
+			log.Fatalf("grpc server errored: %v", err)
 		}
 	}
 }

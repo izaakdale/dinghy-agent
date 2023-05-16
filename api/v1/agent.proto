@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package agent.v1;
+option go_package="github.com/izaakdale/dinghy-agent/api/v1";
+
+message InsertRequest {
+    string key = 1;
+    string value = 2;
+}
+message InsertResponse {}
+
+message DeleteRequest {
+    string key = 1;
+}
+message DeleteResponse {}
+
+message FetchRequest {
+    string key = 1;
+}
+message FetchResponse {
+    string key = 1;
+    string value = 2;
+}
+
+message MemberlistRequest{}
+message MemberlistResponse{
+    string leader = 1;
+    repeated string followers = 2;
+}
+
+service Agent {
+    rpc Insert(InsertRequest) returns (InsertResponse);
+    rpc Delete(DeleteRequest) returns (DeleteResponse);
+    rpc Fetch(FetchRequest) returns (FetchResponse);
+    rpc Memberlist(MemberlistRequest) returns (MemberlistResponse);
+}
