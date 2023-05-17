@@ -49,11 +49,7 @@ func handleJoin(m serf.Member, balance *worker.Balancer) error {
 		return fmt.Errorf("no raft_addr tag for incoming node")
 	}
 
-	client, err := worker.New(nameTag, grpcTag, raftTag)
-	if err != nil {
-		return err
-	}
-	if err := balance.AddClient(client); err != nil {
+	if err := balance.AddClient(nameTag, grpcTag, raftTag); err != nil {
 		return err
 	}
 	return nil

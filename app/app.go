@@ -45,15 +45,13 @@ func (a *App) Run() {
 	log.Printf("hello, my name is %s\n", spec.Name)
 
 	gAddr := fmt.Sprintf("%s:%d", spec.GRPCAddr, spec.GRPCPort)
+	log.Printf("grpc_addr: %s\n", gAddr)
 	ln, err := net.Listen("tcp", gAddr)
 	if err != nil {
 		log.Fatalf("failed to start up grpc listener: %v", err)
 	}
 
-	balance := &worker.Balancer{
-		Leader:    nil,
-		Followers: []*worker.Client{},
-	}
+	balance := worker.NewBalancer()
 
 	gsrv := grpc.NewServer()
 	reflection.Register(gsrv)

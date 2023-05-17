@@ -33,10 +33,14 @@ spec:
               value: "7777"
             - name: NAME
               value: dinghy-agent
+            - name:  GRPC_PORT
+              value: "5001"
           resources:
             limits:
               memory: "128Mi"
               cpu: "500m"
           ports:
+          - name: grpc
+            containerPort: 5001
           - name: serf
             containerPort: 7777

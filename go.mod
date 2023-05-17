@@ -4,19 +4,14 @@ go 1.20
 
 require (
 	github.com/hashicorp/serf v0.10.1
+	github.com/izaakdale/dinghy-worker v0.0.0-20230516221009-6c0bc48554be
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/pkg/errors v0.9.1
 	google.golang.org/grpc v1.55.0
 	google.golang.org/protobuf v1.30.0
 )
 
-replace (
-	github.com/izaakdale/dinghy-worker v0.0.0 => ../dinghy-worker
-)
-
-
 require (
-	github.com/izaakdale/dinghy-worker v0.0.0
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/btree v0.0.0-20180813153112-4030bb1f1f0c // indirect

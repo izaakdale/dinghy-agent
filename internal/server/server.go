@@ -19,8 +19,7 @@ func New(b *worker.Balancer) *Server {
 }
 
 func (s *Server) Insert(ctx context.Context, request *v1.InsertRequest) (*v1.InsertResponse, error) {
-	//TODO implement me
-	panic("implement me")
+	return s.balance.ForwardInsert(ctx, request)
 }
 
 func (s *Server) Delete(ctx context.Context, request *v1.DeleteRequest) (*v1.DeleteResponse, error) {
@@ -29,21 +28,17 @@ func (s *Server) Delete(ctx context.Context, request *v1.DeleteRequest) (*v1.Del
 }
 
 func (s *Server) Fetch(ctx context.Context, request *v1.FetchRequest) (*v1.FetchResponse, error) {
-	//TODO implement me
-	panic("implement me")
+	return s.balance.ForwardFetch(ctx, request)
 }
 
 func (s *Server) Memberlist(context.Context, *v1.MemberlistRequest) (*v1.MemberlistResponse, error) {
-	var followers []string
-	if s.balance.Leader == nil {
+	members := s.balance.GetMembers()
+	if members == nil {
 		return &v1.MemberlistResponse{}, nil
 	}
 
-	for _, f := range s.balance.Followers {
-		followers = append(followers, f.ServerID)
-	}
 	return &v1.MemberlistResponse{
-		Leader:    s.balance.Leader.ServerID,
-		Followers: followers,
+		Leader:    members.Leader,
+		Followers: members.Followers,
 	}, nil
 }

@@ -4,7 +4,7 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
-  name: distcache-ing
+  name: dinghy-agent-ing
   namespace: default
 spec:
   ingressClassName: nginx
@@ -16,7 +16,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: distcache-svc
+            name: dinghy-agent-svc
             port:
               number: 80
   tls:
