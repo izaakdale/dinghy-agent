@@ -107,9 +107,6 @@ func (b *Balancer) GetMembers() *Memberlist {
 }
 
 func (b *Balancer) RemoveNode(serverID string) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
 	if b.leader != nil && b.leader.ServerID == serverID {
 		b.leader = nil
 	}
@@ -142,9 +139,6 @@ func NewBalancer() *Balancer {
 }
 
 func (b *Balancer) ForwardFetch(ctx context.Context, request *agentApi.FetchRequest) (*agentApi.FetchResponse, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
 	f, err := b.nextFollower()
 	if err != nil {
 		return nil, err
@@ -164,9 +158,6 @@ func (b *Balancer) ForwardFetch(ctx context.Context, request *agentApi.FetchRequ
 	}, nil
 }
 func (b *Balancer) ForwardInsert(ctx context.Context, request *agentApi.InsertRequest) (*agentApi.InsertResponse, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
 	if b.leader == nil {
 		return nil, ErrNoServers
 	}
