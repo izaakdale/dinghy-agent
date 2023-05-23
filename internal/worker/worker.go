@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -13,6 +14,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
+
+var ErrNoServers = errors.New("no servers to carry out request")
 
 type Client struct {
 	ServerID string
@@ -43,6 +46,7 @@ func (b *Balancer) AddClient(serverID, grpcAddr, raftAddr string) error {
 		RaftAddr:     raftAddr,
 		WorkerClient: worker,
 	}
+	// TODO check if both leader and followers are nil to assign new leader
 
 	if b.leader != nil {
 		b.followers = append(b.followers, client)
@@ -84,14 +88,14 @@ type Memberlist struct {
 }
 
 func (b *Balancer) GetMembers() *Memberlist {
+	if b.leader == nil && len(b.followers) == 0 {
+		// find new leader or return nil for true missing servers
+		return nil
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	var followers []string
-	if b.leader == nil {
-		return nil
-	}
-
 	for _, f := range b.followers {
 		followers = append(followers, f.ServerID)
 	}
@@ -106,7 +110,7 @@ func (b *Balancer) RemoveNode(serverID string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	if b.leader.ServerID == serverID {
+	if b.leader != nil && b.leader.ServerID == serverID {
 		b.leader = nil
 	}
 
@@ -141,7 +145,10 @@ func (b *Balancer) ForwardFetch(ctx context.Context, request *agentApi.FetchRequ
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	f := b.nextFollower()
+	f, err := b.nextFollower()
+	if err != nil {
+		return nil, err
+	}
 	log.Printf("------- fetch served by %+v -------\n", f.ServerID)
 
 	resp, err := f.Fetch(ctx, &workerApi.FetchRequest{
@@ -160,6 +167,12 @@ func (b *Balancer) ForwardInsert(ctx context.Context, request *agentApi.InsertRe
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	if b.leader == nil {
+		return nil, ErrNoServers
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
 	_, err := b.leader.Insert(ctx, &workerApi.InsertRequest{
 		Key:   request.Key,
 		Value: request.Value,
@@ -171,13 +184,19 @@ func (b *Balancer) ForwardInsert(ctx context.Context, request *agentApi.InsertRe
 	return &agentApi.InsertResponse{}, nil
 }
 
-func (b *Balancer) nextFollower() *Client {
-	if len(b.followers) == 0 {
-		return b.leader
+func (b *Balancer) nextFollower() (*Client, error) {
+	switch {
+	case len(b.followers) == 0 && b.leader == nil:
+		return nil, ErrNoServers
+	case len(b.followers) == 0:
+		return b.leader, nil
 	}
 
 	cur := atomic.AddUint64(&b.current, uint64(1))
 	len := uint64(len(b.followers))
 	idx := int(cur % len)
-	return b.followers[idx]
+	if b.followers[idx] == nil {
+		return b.nextFollower()
+	}
+	return b.followers[idx], nil
 }
