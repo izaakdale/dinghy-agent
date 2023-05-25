@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	v1 "github.com/izaakdale/dinghy-agent/api/v1"
@@ -15,14 +14,14 @@ import (
 
 var ErrNoServers = errors.New("no servers to carry out request")
 
-var _ v1.AgentServer = (*BalancingServer)(nil)
+var _ v1.AgentServer = (*BalancerServer)(nil)
 
-type BalancingServer struct {
+type BalancerServer struct {
 	v1.UnimplementedAgentServer
 	mu        sync.Mutex
 	leader    *Client
-	followers []*Client
-	current   uint64
+	followers map[string]*Client
+	current   string
 }
 
 type Client struct {
@@ -32,14 +31,14 @@ type Client struct {
 	workerApi.WorkerClient
 }
 
-func New() *BalancingServer {
-	return &BalancingServer{
+func New() *BalancerServer {
+	return &BalancerServer{
 		leader:    nil,
-		followers: []*Client{},
+		followers: make(map[string]*Client),
 	}
 }
 
-func (s *BalancingServer) Insert(ctx context.Context, request *v1.InsertRequest) (*v1.InsertResponse, error) {
+func (s *BalancerServer) Insert(ctx context.Context, request *v1.InsertRequest) (*v1.InsertResponse, error) {
 	if s.leader == nil {
 		return nil, ErrNoServers
 	}
@@ -57,12 +56,12 @@ func (s *BalancingServer) Insert(ctx context.Context, request *v1.InsertRequest)
 	return &v1.InsertResponse{}, nil
 }
 
-func (s *BalancingServer) Delete(ctx context.Context, request *v1.DeleteRequest) (*v1.DeleteResponse, error) {
+func (s *BalancerServer) Delete(ctx context.Context, request *v1.DeleteRequest) (*v1.DeleteResponse, error) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (s *BalancingServer) Fetch(ctx context.Context, request *v1.FetchRequest) (*v1.FetchResponse, error) {
+func (s *BalancerServer) Fetch(ctx context.Context, request *v1.FetchRequest) (*v1.FetchResponse, error) {
 	f, err := s.nextFollower()
 	if err != nil {
 		return nil, err
@@ -82,7 +81,7 @@ func (s *BalancingServer) Fetch(ctx context.Context, request *v1.FetchRequest) (
 	}, nil
 }
 
-func (s *BalancingServer) Memberlist(context.Context, *v1.MemberlistRequest) (*v1.MemberlistResponse, error) {
+func (s *BalancerServer) Memberlist(context.Context, *v1.MemberlistRequest) (*v1.MemberlistResponse, error) {
 	members := s.GetMembers()
 	if members == nil {
 		return &v1.MemberlistResponse{}, nil
@@ -94,7 +93,7 @@ func (s *BalancingServer) Memberlist(context.Context, *v1.MemberlistRequest) (*v
 	}, nil
 }
 
-func (b *BalancingServer) nextFollower() (*Client, error) {
+func (b *BalancerServer) nextFollower() (*Client, error) {
 	switch {
 	case len(b.followers) == 0 && b.leader == nil:
 		return nil, ErrNoServers
@@ -102,11 +101,23 @@ func (b *BalancingServer) nextFollower() (*Client, error) {
 		return b.leader, nil
 	}
 
-	cur := atomic.AddUint64(&b.current, uint64(1))
-	len := uint64(len(b.followers))
-	idx := int(cur % len)
-	if b.followers[idx] == nil {
-		return b.nextFollower()
+	// TODO simplify/merge two loops even though its not needed really.
+
+	// if current is empty, just return any old server
+	if b.current == "" {
+		for _, c := range b.followers {
+			b.current = c.ServerID
+			return c, nil
+		}
 	}
-	return b.followers[idx], nil
+
+	// current not empty, return first server that doesn't match, then assign current
+	for _, c := range b.followers {
+		if c.ServerID != b.current {
+			b.current = c.ServerID
+			return c, nil
+		}
+	}
+	// reaching here is technically impossible, but still return nil, poet, know it
+	return nil, nil
 }

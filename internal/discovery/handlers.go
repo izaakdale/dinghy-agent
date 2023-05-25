@@ -10,7 +10,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func HandleSerfEvent(e serf.Event, node *serf.Serf, srv *server.BalancingServer) {
+func HandleSerfEvent(e serf.Event, node *serf.Serf, srv *server.BalancerServer) {
 	switch e.EventType() {
 	case serf.EventMemberJoin:
 		for _, member := range e.(serf.MemberEvent).Members {
@@ -40,7 +40,7 @@ func HandleSerfEvent(e serf.Event, node *serf.Serf, srv *server.BalancingServer)
 	}
 }
 
-func handleJoin(m serf.Member, srv *server.BalancingServer) error {
+func handleJoin(m serf.Member, srv *server.BalancerServer) error {
 	log.Printf("member joined %s @ %s\n", m.Name, m.Addr)
 
 	nameTag, ok := m.Tags["name"]
@@ -66,7 +66,7 @@ func isLocal(c *serf.Serf, m serf.Member) bool {
 	return c.LocalMember().Name == m.Name
 }
 
-func handleLeave(m serf.Member, srv *server.BalancingServer) error {
+func handleLeave(m serf.Member, srv *server.BalancerServer) error {
 	log.Printf("member leaving %s @ %s\n", m.Name, m.Addr)
 	err := srv.RemoveClient(m.Name)
 	if err != nil {
@@ -75,15 +75,15 @@ func handleLeave(m serf.Member, srv *server.BalancingServer) error {
 	return nil
 }
 
-func handleCustomEvent(e serf.UserEvent, srv *server.BalancingServer) error {
-	var req v1.LeaderHeaderbeat
-	if err := proto.Unmarshal(e.Payload, &req); err != nil {
+func handleCustomEvent(e serf.UserEvent, srv *server.BalancerServer) error {
+	var node v1.LeaderHeaderbeat
+	if err := proto.Unmarshal(e.Payload, &node); err != nil {
 		return err
 	}
 	m := srv.GetMembers()
-	if req.Name != m.Leader {
-		// TODO need some sort of update mechanism here
+	if node.Name != m.Leader {
 		log.Printf("leader heartbeat didn't come from my leader\n")
+		return srv.NewLeadership(node.Name, node.GrpcAddr, node.RaftAddr)
 	}
 	return nil
 }
