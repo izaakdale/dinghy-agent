@@ -5,17 +5,19 @@ import (
 	"log"
 
 	"github.com/hashicorp/serf/serf"
-	"github.com/izaakdale/dinghy-agent/internal/worker"
+	"github.com/izaakdale/dinghy-agent/internal/server"
+	v1 "github.com/izaakdale/dinghy-worker/api/v1"
+	"google.golang.org/protobuf/proto"
 )
 
-func HandleSerfEvent(e serf.Event, node *serf.Serf, balance *worker.Balancer) {
+func HandleSerfEvent(e serf.Event, node *serf.Serf, srv *server.BalancingServer) {
 	switch e.EventType() {
 	case serf.EventMemberJoin:
 		for _, member := range e.(serf.MemberEvent).Members {
 			if isLocal(node, member) {
 				continue
 			}
-			err := handleJoin(member, balance)
+			err := handleJoin(member, srv)
 			if err != nil {
 				log.Printf("error handling member join: %s", err.Error())
 			}
@@ -25,16 +27,21 @@ func HandleSerfEvent(e serf.Event, node *serf.Serf, balance *worker.Balancer) {
 			if isLocal(node, member) {
 				continue
 			}
-			err := handleLeave(member, balance)
+			err := handleLeave(member, srv)
 			if err != nil {
 				log.Printf("error handling member leave: %s", err.Error())
 			}
 		}
+	case serf.EventUser:
+		err := handleCustomEvent(e.(serf.UserEvent), srv)
+		if err != nil {
+			log.Printf("error handling custom event: %s", err.Error())
+		}
 	}
 }
 
-func handleJoin(m serf.Member, balance *worker.Balancer) error {
-	log.Printf("------- member joined %s @ %s -------\n", m.Name, m.Addr)
+func handleJoin(m serf.Member, srv *server.BalancingServer) error {
+	log.Printf("member joined %s @ %s\n", m.Name, m.Addr)
 
 	nameTag, ok := m.Tags["name"]
 	if !ok {
@@ -49,7 +56,7 @@ func handleJoin(m serf.Member, balance *worker.Balancer) error {
 		return fmt.Errorf("no raft_addr tag for incoming node")
 	}
 
-	if err := balance.AddClient(nameTag, grpcTag, raftTag); err != nil {
+	if err := srv.AddClient(nameTag, grpcTag, raftTag); err != nil {
 		return err
 	}
 	return nil
@@ -59,11 +66,24 @@ func isLocal(c *serf.Serf, m serf.Member) bool {
 	return c.LocalMember().Name == m.Name
 }
 
-func handleLeave(m serf.Member, balance *worker.Balancer) error {
-	log.Printf("------- member leaving %s @ %s -------\n", m.Name, m.Addr)
-	err := balance.RemoveNode(m.Name)
+func handleLeave(m serf.Member, srv *server.BalancingServer) error {
+	log.Printf("member leaving %s @ %s\n", m.Name, m.Addr)
+	err := srv.RemoveClient(m.Name)
 	if err != nil {
 		return err
+	}
+	return nil
+}
+
+func handleCustomEvent(e serf.UserEvent, srv *server.BalancingServer) error {
+	var req v1.LeaderHeaderbeat
+	if err := proto.Unmarshal(e.Payload, &req); err != nil {
+		return err
+	}
+	m := srv.GetMembers()
+	if req.Name != m.Leader {
+		// TODO need some sort of update mechanism here
+		log.Printf("leader heartbeat didn't come from my leader\n")
 	}
 	return nil
 }

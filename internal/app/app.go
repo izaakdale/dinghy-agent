@@ -11,7 +11,6 @@ import (
 	v1 "github.com/izaakdale/dinghy-agent/api/v1"
 	"github.com/izaakdale/dinghy-agent/internal/discovery"
 	"github.com/izaakdale/dinghy-agent/internal/server"
-	"github.com/izaakdale/dinghy-agent/internal/worker"
 	"github.com/kelseyhightower/envconfig"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -51,12 +50,12 @@ func (a *App) Run() {
 		log.Fatalf("failed to start up grpc listener: %v", err)
 	}
 
-	balance := worker.NewBalancer()
+	// balance := worker.NewBalancer()
 
 	gsrv := grpc.NewServer()
 	reflection.Register(gsrv)
 
-	srv := server.New(balance)
+	srv := server.New()
 	v1.RegisterAgentServer(gsrv, srv)
 
 	errCh := make(chan error)
@@ -89,7 +88,7 @@ func (a *App) Run() {
 			}
 			os.Exit(1)
 		case e := <-evCh:
-			discovery.HandleSerfEvent(e, node, balance)
+			discovery.HandleSerfEvent(e, node, srv)
 		case err := <-errCh:
 			log.Fatalf("grpc server errored: %v", err)
 		}
