@@ -33,27 +33,25 @@ func (s *BalancerServer) AddClient(serverID, grpcAddr, raftAddr string) error {
 		RaftAddr:     raftAddr,
 		WorkerClient: worker,
 	}
-	// TODO check if both leader and followers are nil to assign new leader
 
-	if s.leader != nil {
-		log.Printf("leader not nil\n")
-		s.followers[client.ServerID] = client
-		// b.followers = append(b.followers, client)
-
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		_, err := s.leader.Join(ctx, &workerApi.JoinRequest{
-			ServerAddr: client.RaftAddr,
-			ServerId:   client.ServerID,
-		})
-		if err != nil {
-			return err
-		}
-		return nil
+	switch {
+	case s.leader == nil && len(s.followers) == 0:
+		// this case is a true leadership assigment.
+		log.Printf("true leadership assignment\n")
+		s.leader = client
+		return waitForLeader(client)
+	case s.leader == nil:
+		// leader is nil but followers is not, probably a leader failure.
+		log.Printf("leader is nil, followers is not.\n")
+		// unlock the mutex to allow the leader to claim its ownership via serf
+		s.mu.Unlock()
+		return s.connectToLeader(client)
+	case s.leader != nil:
+		// leader is not nil so add a follower
+		log.Printf("connecting to leader\n")
+		return s.connectToLeader(client)
 	}
-	log.Printf("adding new leader\n")
-	s.leader = client
-	return connectToLeader(s.leader)
+	return nil
 }
 
 func (s *BalancerServer) RemoveClient(serverID string) error {
@@ -86,17 +84,27 @@ func (s *BalancerServer) NewLeadership(serverID, grpcAddr, raftAddr string) erro
 
 		log.Printf("current leader was not nil, so need to swap\n")
 		// whack leader in follows, and new leadership claim in leader
-		s.followers[serverID] = s.leader
+		s.followers[s.leader.ServerID] = s.leader
 		s.leader = c
 		return nil
 	}
 
-	log.Printf("adding brand new connection\n")
-	// add new connection.
-	return s.AddClient(serverID, grpcAddr, raftAddr)
+	// this should never happen
+	if s.leader == nil {
+		log.Printf("I thought this would NEVER happen... check it out!\n")
+		return s.AddClient(serverID, grpcAddr, raftAddr)
+	}
+
+	for _, f := range s.followers {
+		if _, err := s.leader.Join(context.TODO(), &workerApi.JoinRequest{ServerId: f.ServerID, ServerAddr: f.RaftAddr}); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
-func connectToLeader(c *Client) error {
+func waitForLeader(c *Client) error {
 	log.Printf("getting raft state from new client\n")
 	resp, err := c.RaftState(context.Background(), &workerApi.RaftStateRequest{})
 	if err != nil {
@@ -107,9 +115,27 @@ func connectToLeader(c *Client) error {
 	if resp.State != "Leader" {
 		log.Printf("waiting for first client through the door to announce leadership.\n")
 		time.Sleep(time.Second)
-		connectToLeader(c)
+		waitForLeader(c)
+	}
+	return nil
+}
+
+func (s *BalancerServer) connectToLeader(c *Client) error {
+	if s.leader == nil {
+		log.Printf("backing off waiting for leadership claim\n")
+		time.Sleep(time.Second)
+		return s.connectToLeader(c)
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if _, err := s.leader.Join(ctx, &workerApi.JoinRequest{
+		ServerAddr: c.RaftAddr,
+		ServerId:   c.ServerID,
+	}); err != nil {
+		return err
+	}
+	s.followers[c.ServerID] = c
 	return nil
 }
 

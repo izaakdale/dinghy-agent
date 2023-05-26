@@ -76,14 +76,18 @@ func handleLeave(m serf.Member, srv *server.BalancerServer) error {
 }
 
 func handleCustomEvent(e serf.UserEvent, srv *server.BalancerServer) error {
+	log.Printf("leader heartbeat triggered\n")
 	var node v1.LeaderHeaderbeat
 	if err := proto.Unmarshal(e.Payload, &node); err != nil {
 		return err
 	}
 	m := srv.GetMembers()
-	if node.Name != m.Leader {
+	log.Printf("leader: %s node: %s\n", m.Leader, node.Name)
+	if m.Leader != node.Name || m.Leader == "" {
 		log.Printf("leader heartbeat didn't come from my leader\n")
-		return srv.NewLeadership(node.Name, node.GrpcAddr, node.RaftAddr)
+		if err := srv.NewLeadership(node.Name, node.GrpcAddr, node.RaftAddr); err != nil {
+			return err
+		}
 	}
 	return nil
 }
