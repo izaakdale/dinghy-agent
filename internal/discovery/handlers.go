@@ -14,13 +14,17 @@ func HandleSerfEvent(e serf.Event, node *serf.Serf, srv *server.BalancerServer) 
 	switch e.EventType() {
 	case serf.EventMemberJoin:
 		for _, member := range e.(serf.MemberEvent).Members {
-			if isLocal(node, member) {
+			m := member
+			if isLocal(node, m) {
 				continue
 			}
-			err := handleJoin(member, srv)
-			if err != nil {
-				log.Printf("error handling member join: %s", err.Error())
-			}
+			// so that long joins don't block the serf events we run concurrently
+			go func() {
+				err := handleJoin(m, srv)
+				if err != nil {
+					log.Printf("error handling member join: %s", err.Error())
+				}
+			}()
 		}
 	case serf.EventMemberLeave, serf.EventMemberFailed:
 		for _, member := range e.(serf.MemberEvent).Members {
@@ -76,18 +80,10 @@ func handleLeave(m serf.Member, srv *server.BalancerServer) error {
 }
 
 func handleCustomEvent(e serf.UserEvent, srv *server.BalancerServer) error {
-	log.Printf("leader heartbeat triggered\n")
-	var node v1.LeaderHeaderbeat
+	var node v1.ServerHeartbeat
 	if err := proto.Unmarshal(e.Payload, &node); err != nil {
 		return err
 	}
-	m := srv.GetMembers()
-	log.Printf("leader: %s node: %s\n", m.Leader, node.Name)
-	if m.Leader != node.Name || m.Leader == "" {
-		log.Printf("leader heartbeat didn't come from my leader\n")
-		if err := srv.NewLeadership(node.Name, node.GrpcAddr, node.RaftAddr); err != nil {
-			return err
-		}
-	}
+	srv.HeartbeatHandler(&node)
 	return nil
 }

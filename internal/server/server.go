@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -18,10 +19,10 @@ var _ v1.AgentServer = (*BalancerServer)(nil)
 
 type BalancerServer struct {
 	v1.UnimplementedAgentServer
-	mu        sync.Mutex
-	leader    *Client
-	followers map[string]*Client
-	current   string
+	mu              sync.Mutex
+	workers         map[string]*Client
+	leaderID        string
+	currentWorkerID string
 }
 
 type Client struct {
@@ -33,19 +34,35 @@ type Client struct {
 
 func New() *BalancerServer {
 	return &BalancerServer{
-		leader:    nil,
-		followers: make(map[string]*Client),
+		leaderID: "",
+		workers:  make(map[string]*Client),
+	}
+}
+
+func (b *BalancerServer) HeartbeatHandler(server *workerApi.ServerHeartbeat) {
+	log.Printf("received heartbeat from %s\n", server.Name)
+	if server.IsLeader && b.leaderID != server.Name {
+		b.leaderID = server.Name
+	}
+
+	if _, ok := b.workers[server.Name]; !ok {
+		log.Printf("received a heartbeat from an unknown server - %s\n", server.Name)
 	}
 }
 
 func (s *BalancerServer) Insert(ctx context.Context, request *v1.InsertRequest) (*v1.InsertResponse, error) {
-	if s.leader == nil {
+	log.Printf("insert served by %s\n", s.leaderID)
+	leader, ok := s.workers[s.leaderID]
+	if !ok {
+		return nil, fmt.Errorf("No registered leader to insert request")
+	}
+	if leader == nil {
 		return nil, ErrNoServers
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	_, err := s.leader.Insert(ctx, &workerApi.InsertRequest{
+	_, err := leader.Insert(ctx, &workerApi.InsertRequest{
 		Key:   request.Key,
 		Value: request.Value,
 	})
@@ -94,27 +111,13 @@ func (s *BalancerServer) Memberlist(context.Context, *v1.MemberlistRequest) (*v1
 }
 
 func (b *BalancerServer) nextFollower() (*Client, error) {
-	switch {
-	case len(b.followers) == 0 && b.leader == nil:
+	if len(b.workers) == 0 {
 		return nil, ErrNoServers
-	case len(b.followers) == 0:
-		return b.leader, nil
 	}
 
-	// TODO simplify/merge two loops even though its not needed really.
-
-	// if current is empty, just return any old server
-	if b.current == "" {
-		for _, c := range b.followers {
-			b.current = c.ServerID
-			return c, nil
-		}
-	}
-
-	// current not empty, return first server that doesn't match, then assign current
-	for _, c := range b.followers {
-		if c.ServerID != b.current {
-			b.current = c.ServerID
+	for _, c := range b.workers {
+		if c.ServerID != b.currentWorkerID && c.ServerID != b.leaderID {
+			b.currentWorkerID = c.ServerID
 			return c, nil
 		}
 	}
