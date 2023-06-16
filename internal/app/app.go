@@ -50,8 +50,6 @@ func (a *App) Run() {
 		log.Fatalf("failed to start up grpc listener: %v", err)
 	}
 
-	// balance := worker.NewBalancer()
-
 	gsrv := grpc.NewServer()
 	reflection.Register(gsrv)
 

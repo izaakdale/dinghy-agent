@@ -28,7 +28,7 @@ func NewMembership(bindAddr, bindPort, advertiseAddr, advertisePort, clusterAddr
 	conf.MemberlistConfig.BindPort, _ = strconv.Atoi(bindPort)
 	conf.MemberlistConfig.ProtocolVersion = 3 // Version 3 enable the ability to bind different port for each agent
 
-	// prevent annoying serf and memberlist logs logs
+	// prevent annoying serf and memberlist logs
 	conf.MemberlistConfig.Logger = log.New(io.Discard, "", log.Flags())
 	conf.Logger = log.New(io.Discard, "", log.Flags())
 	conf.NodeName = name
@@ -48,13 +48,3 @@ func NewMembership(bindAddr, bindPort, advertiseAddr, advertisePort, clusterAddr
 
 	return cluster, evCh, nil
 }
-
-// func joinCluster(sockets []string, ignoreOld bool, cluster *serf.Serf) {
-// 	_, err := cluster.Join(sockets, ignoreOld)
-// 	if err != nil {
-// 		log.Printf("Couldn't join cluster, backing off: %v\n", err)
-// 		n := rand.Intn(300)
-// 		time.Sleep(time.Millisecond * time.Duration(n))
-// 		joinCluster(sockets, ignoreOld, cluster)
-// 	}
-// }
