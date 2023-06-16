@@ -34,36 +34,27 @@ func (s *BalancerServer) AddClient(serverID, grpcAddr, raftAddr string) error {
 		WorkerClient: worker,
 	}
 
-	switch {
-	case s.leader == nil && len(s.followers) == 0:
-		// this case is a true leadership assigment.
-		log.Printf("true leadership assignment\n")
-		s.leader = client
+	s.workers[serverID] = client
+	// if there is one worker, it means this client is the first in. Make it leader.
+	if len(s.workers) == 1 {
+		// wait for leader hangs until the server responds that it is a leader
+		// basically there is an election process that needs to end before we
+		// can start the assignment process.
+		s.leaderID = client.ServerID
 		return waitForLeader(client)
-	case s.leader == nil:
-		// leader is nil but followers is not, probably a leader failure.
-		log.Printf("leader is nil, followers is not.\n")
-		// unlock the mutex to allow the leader to claim its ownership via serf
-		s.mu.Unlock()
-		return s.connectToLeader(client)
-	case s.leader != nil:
-		// leader is not nil so add a follower
-		log.Printf("connecting to leader\n")
+	} else {
+		// otherwise we want to tell them to join the leader.
 		return s.connectToLeader(client)
 	}
-	return nil
 }
 
 func (s *BalancerServer) RemoveClient(serverID string) error {
-	if s.leader != nil && s.leader.ServerID == serverID {
-		s.leader = nil
+	if _, ok := s.workers[serverID]; ok {
+		delete(s.workers, serverID)
 	}
-
-	if _, ok := s.followers[serverID]; ok {
-		// leaving server lives in map
-		delete(s.followers, serverID)
-	} // else do nothing it doesn't exist anyway!
-
+	if s.leaderID == serverID {
+		s.leaderID = ""
+	}
 	return nil
 }
 
@@ -71,35 +62,7 @@ func (s *BalancerServer) NewLeadership(serverID, grpcAddr, raftAddr string) erro
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	log.Printf("new leadership triggered\n")
-
-	// if new leader connection lives in followers
-	if c, ok := s.followers[serverID]; ok {
-		log.Printf("new leader is in followers\n")
-		// can just assign if leader is nil
-		if s.leader == nil {
-			s.leader = c
-			return nil
-		}
-
-		log.Printf("current leader was not nil, so need to swap\n")
-		// whack leader in follows, and new leadership claim in leader
-		s.followers[s.leader.ServerID] = s.leader
-		s.leader = c
-		return nil
-	}
-
-	// this should never happen
-	if s.leader == nil {
-		log.Printf("I thought this would NEVER happen... check it out!\n")
-		return s.AddClient(serverID, grpcAddr, raftAddr)
-	}
-
-	for _, f := range s.followers {
-		if _, err := s.leader.Join(context.TODO(), &workerApi.JoinRequest{ServerId: f.ServerID, ServerAddr: f.RaftAddr}); err != nil {
-			return err
-		}
-	}
+	s.leaderID = serverID
 
 	return nil
 }
@@ -121,42 +84,49 @@ func waitForLeader(c *Client) error {
 }
 
 func (s *BalancerServer) connectToLeader(c *Client) error {
-	if s.leader == nil {
+	leader, ok := s.workers[s.leaderID]
+	if !ok {
 		log.Printf("backing off waiting for leadership claim\n")
+		time.Sleep(time.Second)
+		return s.connectToLeader(c)
+	}
+
+	resp, err := leader.WorkerClient.RaftState(context.Background(), &workerApi.RaftStateRequest{})
+	if err != nil {
+		log.Printf("need a timeout since my request for leader info failed\n")
+		time.Sleep(time.Second)
+		return s.connectToLeader(c)
+	}
+	if resp.State != "Leader" {
+		log.Printf("need a timeout since my leader isn't the real leader\n")
 		time.Sleep(time.Second)
 		return s.connectToLeader(c)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if _, err := s.leader.Join(ctx, &workerApi.JoinRequest{
+	if _, err := leader.Join(ctx, &workerApi.JoinRequest{
 		ServerAddr: c.RaftAddr,
 		ServerId:   c.ServerID,
 	}); err != nil {
 		return err
 	}
-	s.followers[c.ServerID] = c
+	s.workers[c.ServerID] = c
 	return nil
 }
 
 func (s *BalancerServer) GetMembers() *Memberlist {
-	if s.leader == nil && len(s.followers) == 0 {
-		// find new leader or return nil for true missing servers
+	if len(s.workers) == 0 {
 		return nil
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	var followers []string
-	for _, f := range s.followers {
-		followers = append(followers, f.ServerID)
 	}
 
 	ret := &Memberlist{}
-	if s.leader != nil {
-		ret.Leader = s.leader.ServerID
+	ret.Leader = s.leaderID
+	for _, w := range s.workers {
+		if w.ServerID == s.leaderID {
+			continue
+		}
+		ret.Followers = append(ret.Followers, w.ServerID)
 	}
-	ret.Followers = followers
-
 	return ret
 }
