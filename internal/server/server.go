@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -40,8 +39,8 @@ func New() *BalancerServer {
 }
 
 func (b *BalancerServer) HeartbeatHandler(server *workerApi.ServerHeartbeat) {
-	log.Printf("received heartbeat from %s\n", server.Name)
 	if server.IsLeader && b.leaderID != server.Name {
+		log.Printf("new leadership claim from %s\n", server.Name)
 		b.leaderID = server.Name
 	}
 
@@ -53,10 +52,7 @@ func (b *BalancerServer) HeartbeatHandler(server *workerApi.ServerHeartbeat) {
 func (s *BalancerServer) Insert(ctx context.Context, request *v1.InsertRequest) (*v1.InsertResponse, error) {
 	log.Printf("insert served by %s\n", s.leaderID)
 	leader, ok := s.workers[s.leaderID]
-	if !ok {
-		return nil, fmt.Errorf("No registered leader to insert request")
-	}
-	if leader == nil {
+	if !ok || leader == nil {
 		return nil, ErrNoServers
 	}
 
@@ -121,6 +117,6 @@ func (b *BalancerServer) nextFollower() (*Client, error) {
 			return c, nil
 		}
 	}
-	// reaching here is technically impossible, but still return nil, poet, know it
+	// reaching here is technically impossible, but still return nil
 	return nil, nil
 }

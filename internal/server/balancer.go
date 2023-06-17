@@ -92,13 +92,9 @@ func (s *BalancerServer) connectToLeader(c *Client) error {
 	}
 
 	resp, err := leader.WorkerClient.RaftState(context.Background(), &workerApi.RaftStateRequest{})
-	if err != nil {
-		log.Printf("need a timeout since my request for leader info failed\n")
-		time.Sleep(time.Second)
-		return s.connectToLeader(c)
-	}
-	if resp.State != "Leader" {
-		log.Printf("need a timeout since my leader isn't the real leader\n")
+	// TODO it is possible that this would loop forever. Maybe should implement a finite backoff.
+	if err != nil || resp.State != "Leader" {
+		log.Printf("need a timeout since my request for leader info failed, or I am asking the wrong server.\n")
 		time.Sleep(time.Second)
 		return s.connectToLeader(c)
 	}
