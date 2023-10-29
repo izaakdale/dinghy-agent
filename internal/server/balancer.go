@@ -11,11 +11,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-type Memberlist struct {
-	Leader    string
-	Followers []string
-}
-
 func (s *BalancerServer) AddClient(serverID, grpcAddr, raftAddr string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -109,6 +104,11 @@ func (s *BalancerServer) connectToLeader(c *Client) error {
 	}
 	s.workers[c.ServerID] = c
 	return nil
+}
+
+type Memberlist struct {
+	Leader    string
+	Followers []string
 }
 
 func (s *BalancerServer) GetMembers() *Memberlist {

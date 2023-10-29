@@ -46,6 +46,17 @@ func (b *BalancerServer) HeartbeatHandler(server *workerApi.ServerHeartbeat) {
 
 	if _, ok := b.workers[server.Name]; !ok {
 		log.Printf("received a heartbeat from an unknown server - %s\n", server.Name)
+
+		leader, ok := b.workers[b.leaderID]
+		if !ok {
+			log.Printf("no leader registered\n")
+			return
+		}
+
+		leader.WorkerClient.Join(context.Background(), &workerApi.JoinRequest{
+			ServerAddr: server.RaftAddr,
+			ServerId:   server.Name,
+		})
 	}
 }
 
@@ -112,11 +123,14 @@ func (b *BalancerServer) nextFollower() (*Client, error) {
 	}
 
 	for _, c := range b.workers {
+		if len(b.workers) == 1 {
+			return c, nil
+		}
 		if c.ServerID != b.currentWorkerID && c.ServerID != b.leaderID {
 			b.currentWorkerID = c.ServerID
 			return c, nil
 		}
 	}
 	// reaching here is technically impossible, but still return nil
-	return nil, nil
+	return nil, errors.New("this should be investigated")
 }
