@@ -81,8 +81,19 @@ func (s *BalancerServer) Insert(ctx context.Context, request *v1.InsertRequest) 
 }
 
 func (s *BalancerServer) Delete(ctx context.Context, request *v1.DeleteRequest) (*v1.DeleteResponse, error) {
-	//TODO implement me
-	panic("implement me")
+	leader, ok := s.workers[s.leaderID]
+	if !ok || leader == nil {
+		return nil, ErrNoServers
+	}
+
+	_, err := leader.Delete(ctx, &workerApi.DeleteRequest{
+		Key: request.Key,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &v1.DeleteResponse{}, nil
 }
 
 func (s *BalancerServer) Fetch(ctx context.Context, request *v1.FetchRequest) (*v1.FetchResponse, error) {

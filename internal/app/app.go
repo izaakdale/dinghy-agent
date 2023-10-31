@@ -16,8 +16,6 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
-var spec Specification
-
 type Specification struct {
 	GRPCAddr      string `envconfig:"GRPC_ADDR"`
 	GRPCPort      int    `envconfig:"GRPC_PORT"`
@@ -30,17 +28,12 @@ type Specification struct {
 	Name          string `envconfig:"NAME"`
 }
 
-type App struct {
-}
-
-func New() *App {
+func Run() {
+	var spec Specification
 	if err := envconfig.Process("", &spec); err != nil {
 		panic(err)
 	}
-	return &App{}
-}
 
-func (a *App) Run() {
 	log.Printf("hello, my name is %s\n", spec.Name)
 
 	gAddr := fmt.Sprintf("%s:%d", spec.GRPCAddr, spec.GRPCPort)
@@ -63,13 +56,13 @@ func (a *App) Run() {
 
 	node, evCh, err := discovery.NewMembership(
 		spec.BindAddr,
-		spec.BindPort, // BIND defines where the agent listen for incomming connection
+		spec.BindPort, // BIND defines where the agent listens for incoming connection, e.g. the pod IP
 		spec.AdvertiseAddr,
-		spec.AdvertisePort, // ADVERTISE defines where the agent is reachable, often it the same as BIND
+		spec.AdvertisePort, // ADVERTISE defines where the agent is reachable, e.g. the service IP
 		spec.ClusterAddr,
-		spec.ClusterPort, // CLUSTER is the address of a first agent
+		spec.ClusterPort, // CLUSTER is the address of a first agent, e.g. the service IP, since all servers are reachable here
 		spec.Name,
-	) // NAME must be unique in a cluster
+	)
 	defer node.Leave()
 	if err != nil {
 		log.Fatal(err)
