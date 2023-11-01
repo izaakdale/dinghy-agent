@@ -33,7 +33,7 @@ func (s *BalancerServer) AddClient(serverID, grpcAddr, raftAddr string) error {
 	// if there is one worker, it means this client is the first in. Make it leader.
 	if len(s.workers) == 1 {
 		// wait for leader hangs until the server responds that it is a leader
-		// basically there is an election process that needs to end before we
+		// there is an election process that needs to end before we
 		// can start the assignment process.
 		s.leaderID = client.ServerID
 		return waitForLeader(client)
@@ -44,9 +44,7 @@ func (s *BalancerServer) AddClient(serverID, grpcAddr, raftAddr string) error {
 }
 
 func (s *BalancerServer) RemoveClient(serverID string) error {
-	if _, ok := s.workers[serverID]; ok {
-		delete(s.workers, serverID)
-	}
+	delete(s.workers, serverID)
 	if s.leaderID == serverID {
 		s.leaderID = ""
 	}

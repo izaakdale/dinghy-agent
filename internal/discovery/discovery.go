@@ -21,12 +21,17 @@ func NewMembership(bindAddr, bindPort, advertiseAddr, advertisePort, clusterAddr
 	if err != nil {
 		return nil, nil, err
 	}
+
 	conf.MemberlistConfig.AdvertiseAddr = res.IP.String()
 	conf.MemberlistConfig.AdvertisePort = res.Port
 
 	conf.MemberlistConfig.BindAddr = bindAddr
-	conf.MemberlistConfig.BindPort, _ = strconv.Atoi(bindPort)
-	conf.MemberlistConfig.ProtocolVersion = 3 // Version 3 enable the ability to bind different port for each agent
+	conf.MemberlistConfig.BindPort, err = strconv.Atoi(bindPort)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	conf.MemberlistConfig.ProtocolVersion = 3
 
 	// prevent annoying serf and memberlist logs
 	conf.MemberlistConfig.Logger = log.New(io.Discard, "", log.Flags())
