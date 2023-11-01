@@ -61,11 +61,11 @@ func (b *BalancerServer) HeartbeatHandler(server *workerApi.ServerHeartbeat) {
 }
 
 func (s *BalancerServer) Insert(ctx context.Context, request *v1.InsertRequest) (*v1.InsertResponse, error) {
-	log.Printf("insert served by %s\n", s.leaderID)
 	leader, ok := s.workers[s.leaderID]
 	if !ok || leader == nil {
 		return nil, ErrNoServers
 	}
+	log.Printf("insert served by %s\n", leader.ServerID)
 
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
@@ -85,6 +85,7 @@ func (s *BalancerServer) Delete(ctx context.Context, request *v1.DeleteRequest) 
 	if !ok || leader == nil {
 		return nil, ErrNoServers
 	}
+	log.Printf("delete served by %s\n", leader.ServerID)
 
 	_, err := leader.Delete(ctx, &workerApi.DeleteRequest{
 		Key: request.Key,
