@@ -15,7 +15,7 @@ func (s *BalancerServer) AddClient(serverID, grpcAddr, raftAddr string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	log.Printf("adding client\n")
+	log.Printf("adding client %s to cluster\n", serverID)
 
 	conn, err := grpc.Dial(grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -61,7 +61,7 @@ func (s *BalancerServer) NewLeadership(serverID, grpcAddr, raftAddr string) erro
 }
 
 func waitForLeader(c *Client) error {
-	log.Printf("getting raft state from new client\n")
+	log.Printf("getting raft state from %s\n", c.ServerID)
 	resp, err := c.RaftState(context.Background(), &workerApi.RaftStateRequest{})
 	if err != nil {
 		return err
@@ -69,7 +69,7 @@ func waitForLeader(c *Client) error {
 
 	log.Printf("raft state: %s\n", resp.State)
 	if resp.State != "Leader" {
-		log.Printf("waiting for first client through the door to announce leadership.\n")
+		log.Printf("waiting for %s to announce leadership.\n", c.ServerID)
 		time.Sleep(time.Second)
 		waitForLeader(c)
 	}
