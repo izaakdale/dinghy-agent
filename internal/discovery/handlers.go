@@ -47,6 +47,16 @@ func HandleSerfEvent(e serf.Event, node *serf.Serf, srv *server.BalancerServer) 
 func handleJoin(m serf.Member, srv *server.BalancerServer) error {
 	log.Printf("member joined %s @ %s\n", m.Name, m.Addr)
 
+	// pre-emtively adding types for expansion of agent
+	typeTag, ok := m.Tags["type"]
+	if !ok {
+		return fmt.Errorf("no type tag for incoming node")
+	}
+	if typeTag != "worker" {
+		// handle potential "agent" join here
+		return nil
+	}
+
 	nameTag, ok := m.Tags["name"]
 	if !ok {
 		return fmt.Errorf("no name tag for incoming node")
